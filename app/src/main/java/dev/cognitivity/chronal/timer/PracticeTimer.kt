@@ -67,6 +67,9 @@ class PracticeTimer(private val context: Context) {
         ticker?.cancel()
         cancelAlarm()
         _state.value = TimerState.PAUSED
+
+        val metronome = ChronalApp.getInstance().metronome
+        if (metronome.playing) metronome.stop()
     }
 
     fun resume() {

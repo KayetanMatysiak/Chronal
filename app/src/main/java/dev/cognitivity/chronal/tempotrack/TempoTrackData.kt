@@ -63,6 +63,7 @@ data class TempoTrackData(
     val sections: List<TempoSection> = listOf(TempoSection()),
     val countInEnabled: Boolean = true,
     val countInSoundPackId: String? = null,
+    val bpmOffset: Float = 0f,
 ) {
     val totalBars get() = sections.sumOf { it.bars }
 
@@ -72,10 +73,12 @@ data class TempoTrackData(
         add("sections", JsonArray().apply { sections.forEach { add(it.toJson()) } })
         addProperty("countInEnabled", countInEnabled)
         countInSoundPackId?.let { addProperty("countInSoundPackId", it) }
+        addProperty("bpmOffset", bpmOffset)
     }
 
     companion object {
         const val COUNT_IN_BEATS = 4
+        const val BPM_STEP = 5f
 
         fun fromJson(json: JsonObject) = TempoTrackData(
             id = json.get("id")?.asString ?: UUID.randomUUID().toString(),
@@ -84,6 +87,7 @@ data class TempoTrackData(
                 ?.takeIf { it.isNotEmpty() } ?: listOf(TempoSection()),
             countInEnabled = json.get("countInEnabled")?.asBoolean ?: true,
             countInSoundPackId = json.get("countInSoundPackId")?.takeIf { !it.isJsonNull }?.asString,
+            bpmOffset = json.get("bpmOffset")?.asFloat ?: 0f,
         )
     }
 }

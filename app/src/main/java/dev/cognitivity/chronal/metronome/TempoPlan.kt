@@ -39,7 +39,7 @@ class PlanBeat(
     val isCountIn get() = countInBeat > 0
 }
 
-class TempoPlan(val beats: List<PlanBeat>, val totalBars: Int) {
+class TempoPlan(val trackId: String, val beats: List<PlanBeat>, val totalBars: Int) {
     val packs: List<SoundPack> get() = beats.map { it.pack }.distinct()
 
     companion object {
@@ -73,7 +73,7 @@ class TempoPlan(val beats: List<PlanBeat>, val totalBars: Int) {
                     }
                 }
             }
-            return TempoPlan(beats, bar)
+            return TempoPlan(track.id, beats, bar)
         }
     }
 }

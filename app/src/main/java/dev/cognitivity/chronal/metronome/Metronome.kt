@@ -121,6 +121,16 @@ class Metronome(
     private var planDone = false
     private var lastPlanSection = -1
 
+    private val _planBpmOffset = MutableStateFlow(0f)
+    val planBpmOffset: StateFlow<Float> = _planBpmOffset
+    var onPlanOffsetChanged: ((trackId: String, offset: Float) -> Unit)? = null
+
+    fun setPlanBpmOffset(trackId: String, offset: Float) {
+        _planBpmOffset.value = offset
+        onPlanOffsetChanged?.invoke(trackId, offset)
+        if (activePlan?.trackId == trackId && sendNotifications) sendRunningNotification()
+    }
+
     private val _planPosition = MutableStateFlow(PlanPosition())
     val planPosition: StateFlow<PlanPosition> = _planPosition
 
@@ -182,9 +192,10 @@ class Metronome(
         startInternal()
     }
 
-    fun startPlan(plan: TempoPlan) {
+    fun startPlan(plan: TempoPlan, bpmOffset: Float = 0f) {
         if(preparing) return
         if(playing) stop()
+        _planBpmOffset.value = bpmOffset
         activePlan = plan
         startInternal()
     }
@@ -466,6 +477,7 @@ class Metronome(
             if (planNextSample < frameStartSample - sampleRate) planNextSample = frameStartSample
 
             val beat = plan.beats[planIndex]
+            val beatBpm = (beat.bpm + _planBpmOffset.value).coerceAtLeast(MIN_BPM)
             mixTickSamples(outputBuffer, frameStartSample, planNextSample, getTickSound(beat.pack, beat.pitch))
 
             _planPosition.value = PlanPosition(
@@ -473,7 +485,7 @@ class Metronome(
                 sectionIndex = beat.sectionIndex,
                 bar = beat.bar,
                 beatInBar = beat.beatInBar,
-                bpm = beat.bpm,
+                bpm = beatBpm,
                 countInBeat = beat.countInBeat,
                 totalBars = plan.totalBars,
             )
@@ -483,7 +495,7 @@ class Metronome(
                 if (sendNotifications) sendRunningNotification()
             }
 
-            val exactSamples = beat.lengthBeats * 60.0 / beat.bpm * sampleRate + planRemainder
+            val exactSamples = beat.lengthBeats * 60.0 / beatBpm * sampleRate + planRemainder
             val roundedSamples = round(exactSamples).toLong()
             planRemainder = exactSamples - roundedSamples
             planNextSample += max(1L, roundedSamples)
@@ -863,8 +875,14 @@ class Metronome(
     override fun onReceive(context: Context?, intent: Intent?) {
         when (intent?.action) {
             "dev.cognitivity.chronal.PlayPause" -> if (playing) stop() else start()
-            "dev.cognitivity.chronal.BpmUp" -> if (activePlan == null) { bpm += BPM_STEP; persistBpm() }
-            "dev.cognitivity.chronal.BpmDown" -> if (activePlan == null) { bpm -= BPM_STEP; persistBpm() }
+            "dev.cognitivity.chronal.BpmUp" -> {
+                val plan = activePlan
+                if (plan != null) setPlanBpmOffset(plan.trackId, _planBpmOffset.value + BPM_STEP) else { bpm += BPM_STEP; persistBpm() }
+            }
+            "dev.cognitivity.chronal.BpmDown" -> {
+                val plan = activePlan
+                if (plan != null) setPlanBpmOffset(plan.trackId, _planBpmOffset.value - BPM_STEP) else { bpm -= BPM_STEP; persistBpm() }
+            }
         }
     }
 }

@@ -46,6 +46,18 @@ class TempoTrackViewModel : ViewModel() {
     var screen: TempoTrackScreen by mutableStateOf(TempoTrackScreen.List)
         private set
 
+    init {
+        metronome.onPlanOffsetChanged = { id, offset ->
+            tracks.find { it.id == id }?.let { save(it.copy(bpmOffset = offset)) }
+        }
+    }
+
+    fun adjustTempo(track: TempoTrackData, delta: Float) {
+        val offset = (track.bpmOffset + delta).coerceIn(-500f, 500f)
+        if (metronome.activePlan?.trackId == track.id) metronome.setPlanBpmOffset(track.id, offset)
+        else save(track.copy(bpmOffset = offset))
+    }
+
     fun show(newScreen: TempoTrackScreen) { screen = newScreen }
 
     fun save(track: TempoTrackData) {
@@ -65,7 +77,7 @@ class TempoTrackViewModel : ViewModel() {
 
     fun play(track: TempoTrackData) {
         val defaultPack = metronome.tracks.filterIsInstance<ClickTrack>().firstOrNull()?.soundPack ?: SoundPack.default()
-        metronome.startPlan(TempoPlan.from(track, defaultPack))
+        metronome.startPlan(TempoPlan.from(track, defaultPack), track.bpmOffset)
     }
 
     fun stop() = metronome.stop()

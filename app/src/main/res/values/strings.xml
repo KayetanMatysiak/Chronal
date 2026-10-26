@@ -150,7 +150,16 @@
     <string name="tempo_track_accent_all">All beats</string>
     <string name="tempo_track_accent_none">None</string>
     <string name="tempo_track_bar_of">Bar %1$d / %2$d</string>
-    <string name="tempo_track_section_of">Section %1$d / %2$d</string>    <string name="page_timer">Timer</string>
+    <string name="tempo_track_section_of">Section %1$d / %2$d</string>    <string name="backup_title">Backup</string>
+    <string name="backup_description">Export all settings, presets and tempo tracks to a file, or restore them from one.</string>
+    <string name="backup_exported">Backup saved</string>
+    <string name="backup_export_failed">Could not save the backup</string>
+    <string name="backup_import_failed">Could not read the backup file</string>
+    <string name="tempo_track_tempo_adjust">Tempo</string>
+    <string name="tempo_track_tempo_reset">Reset</string>
+    <string name="tempo_track_tempo_change_title">Change tempo</string>
+    <string name="tempo_track_tempo_change_label">BPM added to every bar (negative to slow down)</string>
+    <string name="page_timer">Timer</string>
     <string name="timer_custom">Custom</string>
     <string name="timer_minutes_short">%d min</string>
     <string name="timer_minutes">Minutes</string>

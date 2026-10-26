@@ -34,6 +34,7 @@ import dev.cognitivity.chronal.ui.ChangelogSheet
 import dev.cognitivity.chronal.ui.settings.data.SettingsCategory
 import dev.cognitivity.chronal.ui.settings.items.SettingItem
 import dev.cognitivity.chronal.ui.settings.items.SettingMeta
+import dev.cognitivity.chronal.ui.settings.screens.appinfo.BackupSection
 import dev.cognitivity.chronal.ui.settings.screens.appinfo.DeveloperOptionsPage
 import dev.cognitivity.chronal.ui.settings.screens.appinfo.FeedbackPage
 import dev.cognitivity.chronal.ui.settings.screens.appinfo.SchemePage
@@ -79,6 +80,9 @@ object AppInfoCategory : SettingsCategory(
                     onDismissRequest = { showChangelog = false }
                 )
             }
+        },
+        SettingItem.Element {
+            BackupSection()
         },
         SettingItem.PageLink(
             meta = SettingMeta(R.string.page_settings_color_scheme, R.string.setting_description_color_scheme),

@@ -158,6 +158,34 @@ private fun ColumnScope.TrackPlayer(viewModel: TempoTrackViewModel, track: Tempo
     val position by metronome.planPosition.collectAsState()
     val playingNow by metronome.playingFlow.collectAsState()
     val playing = playingNow && position.active
+    var showOffsetDialog by remember { mutableStateOf(false) }
+
+    if (showOffsetDialog) {
+        var text by remember { mutableStateOf(formatBpm(track.bpmOffset)) }
+        AlertDialog(
+            onDismissRequest = { showOffsetDialog = false },
+            title = { Text(stringResource(R.string.tempo_track_tempo_change_title)) },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { new ->
+                        text = new.filterIndexed { i, ch -> ch.isDigit() || ch == '.' || (i == 0 && ch == '-') }.take(8)
+                    },
+                    label = { Text(stringResource(R.string.tempo_track_tempo_change_label)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = if (text.isBlank() || text == "-") 0f else text.toFloatOrNull()
+                    if (value != null) viewModel.adjustTempo(track, value - track.bpmOffset)
+                    showOffsetDialog = false
+                }) { Text(stringResource(R.string.tempo_track_save)) }
+            },
+            dismissButton = { TextButton(onClick = { showOffsetDialog = false }) { Text(stringResource(R.string.generic_cancel)) } }
+        )
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         IconButton(onClick = {
@@ -189,8 +217,32 @@ private fun ColumnScope.TrackPlayer(viewModel: TempoTrackViewModel, track: Tempo
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            Text(track.sections.first().bpm.toInt().toString(), fontSize = 96.sp, fontWeight = FontWeight.Bold)
+            Text((track.sections.first().bpm + track.bpmOffset).coerceAtLeast(1f).toInt().toString(), fontSize = 96.sp, fontWeight = FontWeight.Bold)
             Text(stringResource(R.string.tempo_track_summary, track.sections.size, track.totalBars), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        OutlinedButton(onClick = { viewModel.adjustTempo(track, -TempoTrackData.BPM_STEP) }) {
+            Text("-${TempoTrackData.BPM_STEP.toInt()}")
+        }
+        TextButton(onClick = { showOffsetDialog = true }) {
+            Text(
+                stringResource(R.string.tempo_track_tempo_adjust) + " " +
+                    (if (track.bpmOffset > 0) "+" else "") + formatBpm(track.bpmOffset) + " BPM"
+            )
+        }
+        OutlinedButton(onClick = { viewModel.adjustTempo(track, TempoTrackData.BPM_STEP) }) {
+            Text("+${TempoTrackData.BPM_STEP.toInt()}")
+        }
+        if (track.bpmOffset != 0f) {
+            TextButton(onClick = { viewModel.adjustTempo(track, -track.bpmOffset) }) {
+                Text(stringResource(R.string.tempo_track_tempo_reset))
+            }
         }
     }
 
