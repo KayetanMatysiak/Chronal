@@ -1,6 +1,6 @@
 /*
  * Chronal: Metronome app for Android
- * Copyright (C) 2025  cognitivity
+ * Copyright (C) 2025-2026  cognitivity
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,12 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package dev.cognitivity.chronal.glance
+package dev.cognitivity.chronal.timer
 
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import dev.cognitivity.chronal.widgets.TunerWidget
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import dev.cognitivity.chronal.ChronalApp
 
-class TunerWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = TunerWidget()
+class TimerReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_FINISHED) ChronalApp.getInstance().timer.onFinished()
+    }
+
+    companion object {
+        const val ACTION_FINISHED = "dev.cognitivity.chronal.TIMER_FINISHED"
+    }
 }

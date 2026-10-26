@@ -61,7 +61,6 @@ import dev.cognitivity.chronal.ui.settings.categories.NotificationsCategory.Noti
 import dev.cognitivity.chronal.ui.settings.data.SettingsCategory
 import dev.cognitivity.chronal.ui.settings.items.SettingItem
 import dev.cognitivity.chronal.ui.settings.items.SettingMeta
-import dev.cognitivity.chronal.ui.settings.screens.notifications.PracticeReminderPage
 
 private var showNotificationWarning by mutableStateOf(true)
 private var notificationsEnabled by mutableStateOf(NotificationManagerCompat.from(ChronalApp.getInstance()).areNotificationsEnabled())
@@ -74,16 +73,7 @@ object NotificationsCategory : SettingsCategory(
     items = listOf(
         SettingItem.Element {
             NotificationPermissionContent()
-        },
-        SettingItem.Switch(
-            meta = SettingMeta(R.string.setting_name_metronome_controls_notification),
-            setting = Settings.METRONOME_CONTROLS_NOTIFICATION
-        ),
-        SettingItem.Switch(
-            meta = SettingMeta(R.string.page_settings_practice_reminder),
-            setting = Settings.PRACTICE_REMINDER_NOTIFICATION,
-            pageId = PracticeReminderPage.id
-        )
+        }
     )
 ) {
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)

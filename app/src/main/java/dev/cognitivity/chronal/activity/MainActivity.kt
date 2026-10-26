@@ -71,15 +71,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.cognitivity.chronal.ChronalApp
 import dev.cognitivity.chronal.R
+import dev.cognitivity.chronal.services.MetronomeService
 import dev.cognitivity.chronal.settings.Settings
 import dev.cognitivity.chronal.ui.ChangelogSheet
 import dev.cognitivity.chronal.ui.metronome.MetronomePageMain
 import dev.cognitivity.chronal.ui.metronome.MetronomeViewModel
 import dev.cognitivity.chronal.ui.settings.SettingsPageMain
+import dev.cognitivity.chronal.ui.tempotrack.TempoTrackPageMain
+import dev.cognitivity.chronal.ui.tempotrack.TempoTrackViewModel
 import dev.cognitivity.chronal.ui.theme.MetronomeTheme
-import dev.cognitivity.chronal.ui.tuner.windows.TunerPageMain
 import dev.cognitivity.chronal.widgets.PresetListWidget
-import dev.cognitivity.chronal.widgets.TunerWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -95,12 +96,6 @@ class MainActivity : BaseActivity() {
         startActivity(k)
     }
 
-    var microphoneEnabled by mutableStateOf(false)
-    var showMicrophoneDialog by mutableStateOf(false)
-    val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { permission ->
-        microphoneEnabled = permission
-        showMicrophoneDialog = !permission
-    }
 //    val fileActivity = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
 //        if(it.resultCode == RESULT_OK) {
 //            startActivity(
@@ -111,6 +106,10 @@ class MainActivity : BaseActivity() {
 //        }
 //    }
 
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if(it) MetronomeService.start(this)
+    }
+
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,10 +117,14 @@ class MainActivity : BaseActivity() {
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         vibratorManager = if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager else null
-        microphoneEnabled = ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         enableEdgeToEdge()
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         val metronomeViewModel: MetronomeViewModel by viewModels()
 
@@ -140,6 +143,7 @@ class MainActivity : BaseActivity() {
                 }
             }
 
+            MetronomeService.start(this@MainActivity)
             keepSplashScreen = false
             if(intent.hasExtra("tap_tempo")) {
                 metronomeViewModel.setShowBpmDialog(true)
@@ -152,17 +156,11 @@ class MainActivity : BaseActivity() {
         super.onPause()
         CoroutineScope(Dispatchers.IO).launch {
             PresetListWidget().updateAll(this@MainActivity)
-            TunerWidget().updateAll(this@MainActivity)
-        }
-        if(ChronalApp.getInstance().isInitialized()) {
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(1)
         }
     }
 
     override fun onResume() {
         super.onResume()
-        microphoneEnabled = ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
         CoroutineScope(Dispatchers.IO).launch {
             Settings.LAST_OPEN.save(System.currentTimeMillis())
@@ -220,42 +218,6 @@ class MainActivity : BaseActivity() {
                     NavigationHost(navController, true, padding, metronomeViewModel)
                 }
             } else NavigationHost(navController, false, padding, metronomeViewModel)
-
-            if(showMicrophoneDialog) {
-                AlertDialog(
-                    onDismissRequest = { showMicrophoneDialog = false },
-                    confirmButton = @Composable {
-                        TextButton(onClick = {
-                            showMicrophoneDialog = false
-                            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                            intent.data = ("package:$packageName").toUri()
-                            startActivity(intent)
-                        }) {
-                            Text(stringResource(R.string.generic_settings))
-                        }
-                    },
-                    dismissButton = @Composable {
-                        TextButton(onClick = {
-                            showMicrophoneDialog = false
-                        }) {
-                            Text(stringResource(R.string.generic_cancel))
-                        }
-                    },
-                    icon = @Composable {
-                        Icon(
-                            painter = painterResource(R.drawable.outline_warning_24),
-                            contentDescription = stringResource(R.string.generic_warning),
-                        )
-                    },
-                    title = @Composable {
-                        Text(stringResource(R.string.tuner_missing_permission_title))
-                    },
-                    text = @Composable {
-                        Text(stringResource(R.string.tuner_missing_permission_text))
-                    }
-                )
-            }
-
             val lastVersionCode = remember { Settings.LAST_VERSION_CODE.get() }
             val lastVersion = remember { Settings.LAST_VERSION.get() }
             val currentVersionCode = remember { Settings.VERSION_CODE.get() }
@@ -284,6 +246,7 @@ class MainActivity : BaseActivity() {
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     @Composable
     fun NavigationHost(navController: NavHostController, expanded: Boolean, padding: PaddingValues, metronomeViewModel: MetronomeViewModel) {
+        val tempoTrackViewModel: TempoTrackViewModel by viewModels()
         val enterTransition: (Boolean) -> EnterTransition = { forward ->
             if (expanded) {
                 slideInVertically(MotionScheme.expressive().slowSpatialSpec(), initialOffsetY = { if(forward) it else -it })
@@ -316,9 +279,8 @@ class MainActivity : BaseActivity() {
                 }
             ) {
                 MetronomePageMain(this@MainActivity, metronomeViewModel, padding)
-                ChronalApp.getInstance().tuner?.stop()
             }
-            composable("tuner",
+            composable("tempotrack",
                 enterTransition = {
                     val from = initialState.destination.route
                     enterTransition(from == "metronome")
@@ -328,12 +290,8 @@ class MainActivity : BaseActivity() {
                     exitTransition(to == "settings")
                 }
             ) {
-                if(ChronalApp.getInstance().isInitialized() && !ChronalApp.getInstance().metronome.playing) {
-                    val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                    notificationManager.cancel(1)
-                }
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                TunerPageMain(expanded, padding, this@MainActivity)
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                TempoTrackPageMain(padding, tempoTrackViewModel)
             }
             composable("settings",
                 enterTransition = {
@@ -343,20 +301,15 @@ class MainActivity : BaseActivity() {
                     exitTransition(false)
                 }
             ) {
-                if(!ChronalApp.getInstance().metronome.playing) {
-                    val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                    notificationManager.cancel(1)
-                }
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 SettingsPageMain(expanded, padding, this@MainActivity)
-                ChronalApp.getInstance().tuner?.stop()
             }
         }
     }
 
     private val items = listOf(
         NavigationItem(R.string.page_metronome, "metronome", NavigationIcon.ResourceIcon(R.drawable.baseline_music_note_24)),
-        NavigationItem(R.string.page_tuner, "tuner", NavigationIcon.ResourceIcon(R.drawable.baseline_graphic_eq_24)),
+        NavigationItem(R.string.page_tempo_track, "tempotrack", NavigationIcon.ResourceIcon(R.drawable.baseline_show_chart_24)),
         NavigationItem(R.string.page_settings, "settings", NavigationIcon.VectorIcon(Icons.Outlined.Settings),
             NavigationIcon.VectorIcon(Icons.Filled.Settings)
         )

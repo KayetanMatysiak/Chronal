@@ -123,20 +123,6 @@ class HelpActivity : BaseActivity() {
                             navHostController.navigate("metronome")
                         }
                     )
-                    Tab(
-                        text = { Text(stringResource(R.string.page_tuner)) },
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.baseline_graphic_eq_24),
-                                contentDescription = stringResource(R.string.page_tuner),
-                            )
-                        },
-                        selected = page == 1,
-                        onClick = {
-                            page = 1
-                            navHostController.navigate("tuner")
-                        }
-                    )
                 }
 
                 NavHost(
@@ -153,16 +139,6 @@ class HelpActivity : BaseActivity() {
                         }
                     ) {
                         MetronomeHelp()
-                    }
-                    composable("tuner",
-                        enterTransition = {
-                            enterTransition(true)
-                        },
-                        exitTransition = {
-                            exitTransition(false)
-                        }
-                    ) {
-                        TunerHelp()
                     }
                 }
             }
@@ -230,25 +206,4 @@ class HelpActivity : BaseActivity() {
                 )
             }
         }
-    }
-
-    @Composable
-    fun TunerHelp() {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            item {
-                Question(
-                    question = R.string.help_tuner_detection_title,
-                    answer = R.string.help_tuner_detection
-                )
-            }
-            item {
-                Question(
-                    question = R.string.help_tuner_transpose_title,
-                    answer = R.string.help_tuner_transpose
-                )
-            }
-        }
-    }
-}
+    }}

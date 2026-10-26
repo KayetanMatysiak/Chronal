@@ -44,6 +44,7 @@ import dev.cognitivity.chronal.activity.MainActivity
 import dev.cognitivity.chronal.ui.metronome.components.MetronomeDisplay
 import dev.cognitivity.chronal.ui.metronome.components.PlayButton
 import dev.cognitivity.chronal.ui.metronome.components.TempoControlsDialog
+import dev.cognitivity.chronal.ui.metronome.components.TimerDialog
 import dev.cognitivity.chronal.ui.metronome.components.TrackList
 import dev.cognitivity.chronal.ui.metronome.components.metronomeGestures
 import dev.cognitivity.chronal.ui.metronome.pages.CircularDisplay
@@ -183,6 +184,10 @@ fun MetronomePageMain(mainActivity: MainActivity, viewModel: MetronomeViewModel,
                 }
             }
         }
+    }
+
+    if(viewModel.showTimerDialog.collectAsState().value) {
+        TimerDialog(onDismissRequest = { viewModel.setShowTimerDialog(false) })
     }
 
     if(viewModel.showBpmDialog.collectAsState().value) {

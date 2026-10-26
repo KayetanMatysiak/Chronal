@@ -35,6 +35,7 @@ import dev.cognitivity.chronal.settings.types.json.MetronomePreset
 import dev.cognitivity.chronal.settings.types.json.TempoMarking
 import dev.cognitivity.chronal.settings.types.json.metronome.MetronomeConfig
 import dev.cognitivity.chronal.settings.types.json.metronome.MetronomeConfigTrack
+import dev.cognitivity.chronal.tempotrack.TempoTrackData
 
 object Settings {
     // General
@@ -119,6 +120,12 @@ object Settings {
             }
         },
         deserializer = { json -> json.asJsonArray.map { MetronomePreset.fromJson(it.asJsonObject) }.toMutableList() }
+    )
+    val TEMPO_TRACKS = JsonSetting(
+        key = "tempo_tracks",
+        defaultValue = emptyList<TempoTrackData>(),
+        serializer = { tracks -> JsonArray().apply { tracks.forEach { add(it.toJson()) } } },
+        deserializer = { json -> json.asJsonArray.map { TempoTrackData.fromJson(it.asJsonObject) } }
     )
     val FULLSCREEN_WARNING = BooleanSetting("fullscreen_warning", true)
 

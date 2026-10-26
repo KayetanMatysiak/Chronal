@@ -25,10 +25,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import dev.cognitivity.chronal.metronome.Metronome
 import dev.cognitivity.chronal.metronome.tracks.MetronomeTrack
-import dev.cognitivity.chronal.notifications.PracticeReminderScheduler
 import dev.cognitivity.chronal.settings.Setting
 import dev.cognitivity.chronal.settings.Settings
-import dev.cognitivity.chronal.tuner.Tuner
+import dev.cognitivity.chronal.timer.PracticeTimer
 import kotlinx.coroutines.runBlocking
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -37,12 +36,13 @@ import kotlin.math.roundToInt
 
 class ChronalApp : Application() {
     lateinit var metronome: Metronome
-    var tuner: Tuner? = null
+    lateinit var timer: PracticeTimer
 
     override fun onCreate() {
         super.onCreate()
         application = this
         Setting.init(applicationContext)
+        timer = PracticeTimer(applicationContext)
 
         runBlocking {
             Setting.loadAll()
@@ -55,8 +55,6 @@ class ChronalApp : Application() {
                 bpm = Settings.getBpm(),
                 tracks = tracks.toMutableList()
             )
-
-            PracticeReminderScheduler.initialize(applicationContext)
         }
     }
 

@@ -22,7 +22,6 @@ import dev.cognitivity.chronal.ui.settings.categories.AppInfoCategory
 import dev.cognitivity.chronal.ui.settings.categories.LanguageCategory
 import dev.cognitivity.chronal.ui.settings.categories.MetronomeCategory
 import dev.cognitivity.chronal.ui.settings.categories.NotificationsCategory
-import dev.cognitivity.chronal.ui.settings.categories.TunerCategory
 import dev.cognitivity.chronal.ui.settings.data.SettingsCategory
 import dev.cognitivity.chronal.ui.settings.data.SettingsPage
 import dev.cognitivity.chronal.ui.settings.screens.appinfo.DeveloperOptionsPage
@@ -30,15 +29,10 @@ import dev.cognitivity.chronal.ui.settings.screens.appinfo.FeedbackPage
 import dev.cognitivity.chronal.ui.settings.screens.appinfo.SchemePage
 import dev.cognitivity.chronal.ui.settings.screens.language.LanguagePage
 import dev.cognitivity.chronal.ui.settings.screens.metronome.GesturesPage
-import dev.cognitivity.chronal.ui.settings.screens.notifications.PracticeReminderPage
-import dev.cognitivity.chronal.ui.settings.screens.tuner.A4FrequencyPage
-import dev.cognitivity.chronal.ui.settings.screens.tuner.AccidentalsPage
-import dev.cognitivity.chronal.ui.settings.screens.tuner.NoteLocalePage
 
 object SettingsLayout {
     val categories = listOf(
         MetronomeCategory,
-        TunerCategory,
         NotificationsCategory,
         AppInfoCategory,
         LanguageCategory
@@ -46,13 +40,9 @@ object SettingsLayout {
 
     val pages = listOf(
         GesturesPage,
-        A4FrequencyPage,
-        NoteLocalePage,
-        AccidentalsPage,
         FeedbackPage,
         DeveloperOptionsPage,
         SchemePage,
-        PracticeReminderPage,
         LanguagePage
     )
 

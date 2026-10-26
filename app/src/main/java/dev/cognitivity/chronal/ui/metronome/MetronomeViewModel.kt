@@ -74,6 +74,9 @@ class MetronomeViewModel: ViewModel() {
     private val _showBpmDialog = MutableStateFlow(false)
     val showBpmDialog: StateFlow<Boolean> = _showBpmDialog.asStateFlow()
 
+    private val _showTimerDialog = MutableStateFlow(false)
+    val showTimerDialog: StateFlow<Boolean> = _showTimerDialog.asStateFlow()
+
     private val _bpmDialogTab = MutableStateFlow(0)
     val bpmDialogTab: StateFlow<Int> = _bpmDialogTab.asStateFlow()
 
@@ -87,12 +90,15 @@ class MetronomeViewModel: ViewModel() {
         syncMetronomeState()
     }
 
+    private var observingPlaying = false
+
     fun syncMetronomeState() {
         _tracks.value = metronome.tracks.toList()
 
-        CoroutineScope(Dispatchers.Main).launch {
-            metronome.tracks[0].pauseEvents.collect { paused ->
-                _playing.value = !paused
+        if(!observingPlaying) {
+            observingPlaying = true
+            CoroutineScope(Dispatchers.Main).launch {
+                metronome.playingFlow.collect { _playing.value = it }
             }
         }
     }
@@ -179,6 +185,7 @@ class MetronomeViewModel: ViewModel() {
     fun setFullscreenMode(newValue: Boolean) { _fullscreenMode.value = newValue }
     fun setFlipConductor(newValue: Boolean) { _flipConductor.value = newValue }
     fun setShowBpmDialog(newValue: Boolean) { _showBpmDialog.value = newValue }
+    fun setShowTimerDialog(newValue: Boolean) { _showTimerDialog.value = newValue }
     fun setBpmDialogTab(newValue: Int) { _bpmDialogTab.value = newValue }
     fun setIntervals(newValue: List<Long>) { _intervals.value = newValue }
     fun addInterval(newValue: Long) { _intervals.value += newValue }

@@ -18,6 +18,7 @@
 
 package dev.cognitivity.chronal.metronome
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -46,6 +47,7 @@ import dev.cognitivity.chronal.R
 import dev.cognitivity.chronal.activity.MainActivity
 import dev.cognitivity.chronal.metronome.modifiers.CountIn
 import dev.cognitivity.chronal.metronome.sound.Sound
+import dev.cognitivity.chronal.metronome.sound.SoundPack
 import dev.cognitivity.chronal.metronome.tracks.ClickTrack
 import dev.cognitivity.chronal.metronome.tracks.ClickTrack.Companion.MAX_BPM
 import dev.cognitivity.chronal.metronome.tracks.ClickTrack.Companion.MIN_BPM
@@ -78,6 +80,11 @@ class Metronome(
     tracks: MutableList<MetronomeTrack>
 ) : BroadcastReceiver() {
 
+    companion object {
+        const val BPM_STEP = 5
+        const val NOTIFICATION_ID = 1
+    }
+
     private val sampleRate = 48000
     private var audioTrack = getAudioTrack()
     private val frameSize = 256
@@ -86,7 +93,14 @@ class Metronome(
     private var handlerThread = HandlerThread("metronome")
     private var handler: Handler
 
+    private val _playingFlow = MutableStateFlow(false)
+    val playingFlow: StateFlow<Boolean> = _playingFlow
+
     var playing = false
+        set(value) {
+            field = value
+            _playingFlow.value = value
+        }
     var timestamp = 0L
 
     var preparing by mutableStateOf(false)
@@ -98,6 +112,17 @@ class Metronome(
     private val ongoingSounds = mutableListOf<OngoingSound>()
 
     private val schedulerLock = Any()
+
+    @Volatile var activePlan: TempoPlan? = null
+        private set
+    private var planIndex = 0
+    private var planNextSample = 0L
+    private var planRemainder = 0.0
+    private var planDone = false
+    private var lastPlanSection = -1
+
+    private val _planPosition = MutableStateFlow(PlanPosition())
+    val planPosition: StateFlow<PlanPosition> = _planPosition
 
     private var _bpm = mutableFloatStateOf(bpm.coerceIn(MIN_BPM, MAX_BPM))
     var bpm: Float
@@ -113,6 +138,7 @@ class Metronome(
                     resyncTempo(oldValue, newValue)
                 }
             }
+            if (sendNotifications) sendRunningNotification()
         }
 
     private var _tracks = tracks.toMutableStateList()
@@ -141,7 +167,8 @@ class Metronome(
 
         if (sendNotifications) {
             ContextCompat.registerReceiver(context, this, IntentFilter("dev.cognitivity.chronal.PlayPause"), ContextCompat.RECEIVER_EXPORTED)
-            ContextCompat.registerReceiver(context, this, IntentFilter("dev.cognitivity.chronal.Stop"), ContextCompat.RECEIVER_EXPORTED)
+            ContextCompat.registerReceiver(context, this, IntentFilter("dev.cognitivity.chronal.BpmUp"), ContextCompat.RECEIVER_EXPORTED)
+            ContextCompat.registerReceiver(context, this, IntentFilter("dev.cognitivity.chronal.BpmDown"), ContextCompat.RECEIVER_EXPORTED)
         }
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -151,9 +178,21 @@ class Metronome(
 
     fun start() {
         if(playing || preparing) return
+        activePlan = null
+        startInternal()
+    }
 
+    fun startPlan(plan: TempoPlan) {
+        if(preparing) return
+        if(playing) stop()
+        activePlan = plan
+        startInternal()
+    }
+
+    private fun startInternal() {
         CoroutineScope(Dispatchers.IO).launch {
             prepareSounds()
+            activePlan?.packs?.forEach { pack -> listOf(0, 1).forEach { getTickSound(pack, it) } }
 
             modifiers.forEach { it.onStart() }
 
@@ -169,6 +208,11 @@ class Metronome(
                 }
 
                 writeHeadSample = 0L
+                planIndex = 0
+                planNextSample = 0L
+                planRemainder = 0.0
+                planDone = false
+                lastPlanSection = -1
 
                 val currentSamplePos = 0L
                 tracks.forEach { track ->
@@ -202,6 +246,8 @@ class Metronome(
 
     fun stop() {
         playing = false
+        activePlan = null
+        _planPosition.value = PlanPosition()
         handler.removeCallbacks(audioRunnable)
 
         synchronized(schedulerLock) {
@@ -266,6 +312,10 @@ class Metronome(
         }
 
         writeAudio(outputBuffer)
+        if(planDone) {
+            stop()
+            return@Runnable
+        }
         if(playing) {
             handler.post(audioRunnable)
         }
@@ -315,6 +365,10 @@ class Metronome(
     }
 
     private fun mixTracks(outputBuffer: FloatArray, frameStartSample: Long, frameEndSample: Long) {
+        activePlan?.let {
+            mixPlan(it, outputBuffer, frameStartSample, frameEndSample)
+            return
+        }
         if(_countInActive.value) {
             mixCountIn(outputBuffer, frameStartSample, frameEndSample)
             return
@@ -407,8 +461,46 @@ class Metronome(
         }
     }
 
+    private fun mixPlan(plan: TempoPlan, outputBuffer: FloatArray, frameStartSample: Long, frameEndSample: Long) {
+        while (planNextSample < frameEndSample && planIndex < plan.beats.size) {
+            if (planNextSample < frameStartSample - sampleRate) planNextSample = frameStartSample
+
+            val beat = plan.beats[planIndex]
+            mixTickSamples(outputBuffer, frameStartSample, planNextSample, getTickSound(beat.pack, beat.pitch))
+
+            _planPosition.value = PlanPosition(
+                active = true,
+                sectionIndex = beat.sectionIndex,
+                bar = beat.bar,
+                beatInBar = beat.beatInBar,
+                bpm = beat.bpm,
+                countInBeat = beat.countInBeat,
+                totalBars = plan.totalBars,
+            )
+            val sectionKey = if (beat.isCountIn) -2 else beat.sectionIndex
+            if (sectionKey != lastPlanSection) {
+                lastPlanSection = sectionKey
+                if (sendNotifications) sendRunningNotification()
+            }
+
+            val exactSamples = beat.lengthBeats * 60.0 / beat.bpm * sampleRate + planRemainder
+            val roundedSamples = round(exactSamples).toLong()
+            planRemainder = exactSamples - roundedSamples
+            planNextSample += max(1L, roundedSamples)
+            planIndex++
+
+            if (planNextSample - frameStartSample > frameSize * 1024L) break
+        }
+        if (planIndex >= plan.beats.size && frameStartSample >= planNextSample + sampleRate / 4) {
+            planDone = true
+        }
+    }
+
     private fun mixTick(outputBuffer: FloatArray, frameStartSample: Long, beatSample: Long, trackIndex: Int, pitch: Int) {
-        val tickSamples = getTickSound(trackIndex, pitch)
+        mixTickSamples(outputBuffer, frameStartSample, beatSample, getTickSound(trackIndex, pitch))
+    }
+
+    private fun mixTickSamples(outputBuffer: FloatArray, frameStartSample: Long, beatSample: Long, tickSamples: FloatArray) {
         if (tickSamples.isEmpty()) return
 
         val frameOffset = (beatSample - frameStartSample).toInt()
@@ -506,6 +598,10 @@ class Metronome(
 
     private fun getTickSound(trackIndex: Int, pitch: Int): FloatArray {
         val pack = (tracks[trackIndex] as? ClickTrack)?.soundPack ?: return FloatArray(0)
+        return getTickSound(pack, pitch)
+    }
+
+    private fun getTickSound(pack: SoundPack, pitch: Int): FloatArray {
         val sound = pack.getSound(pitch) ?: return FloatArray(0)
         tickSoundCache[sound.key]?.let { return it }
 
@@ -709,52 +805,66 @@ class Metronome(
         }
     }
 
-    private fun sendRunningNotification() {
-        if(!Settings.METRONOME_CONTROLS_NOTIFICATION.get()) return
+    fun buildNotification(): Notification {
         createNotificationChannel()
 
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val pauseIntent = Intent("dev.cognitivity.chronal.PlayPause")
         val pausePendingIntent = PendingIntent.getBroadcast(context, 0, pauseIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val stopIntent = Intent("dev.cognitivity.chronal.Stop")
-        val stopPendingIntent = PendingIntent.getBroadcast(context, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val downIntent = Intent("dev.cognitivity.chronal.BpmDown")
+        val downPendingIntent = PendingIntent.getBroadcast(context, 1, downIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val upIntent = Intent("dev.cognitivity.chronal.BpmUp")
+        val upPendingIntent = PendingIntent.getBroadcast(context, 2, upIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) "PlayingBackground" else ""
+        val isPlaying = this.playing
 
-        val builder = NotificationCompat.Builder(context, channelId)
+        return NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.baseline_music_note_24)
-            .setContentTitle(context.getString(R.string.metronome_notification_title, bpm.toInt()))
-            .setContentText(context.getString(if (this.playing) R.string.metronome_notification_playing else R.string.metronome_notification_paused))
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentTitle(context.getString(R.string.metronome_notification_title, (activePlan?.let { _planPosition.value.bpm.takeIf { b -> b > 0f } } ?: bpm).toInt()))
+            .setContentText(context.getString(if (isPlaying) R.string.metronome_notification_playing else R.string.metronome_notification_paused))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
             .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .addAction(0, context.getString(if (this.playing) R.string.generic_pause else R.string.generic_resume), pausePendingIntent)
-            .addAction(0, context.getString(R.string.generic_stop), stopPendingIntent)
-            .setUsesChronometer(true)
+            .addAction(0, context.getString(R.string.metronome_notification_slower, BPM_STEP), downPendingIntent)
+            .addAction(0, context.getString(if (isPlaying) R.string.generic_stop else R.string.generic_start), pausePendingIntent)
+            .addAction(0, context.getString(R.string.metronome_notification_faster, BPM_STEP), upPendingIntent)
+            .setShowWhen(isPlaying)
+            .setUsesChronometer(isPlaying)
+            .apply { if (isPlaying) setWhen(timestamp) }
+            .build()
+    }
 
-        notificationManager.notify(1, builder.build())
+    private fun sendRunningNotification() {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            notificationManager.notify(NOTIFICATION_ID, buildNotification())
+        } catch (e: SecurityException) {
+            Log.w("Metronome", "Notification permission missing", e)
+        }
+    }
+
+    private fun persistBpm() {
+        val value = bpm
+        CoroutineScope(Dispatchers.Main).launch {
+            Settings.setBpm(value)
+            Settings.METRONOME_CONFIG.save()
+        }
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (intent?.action == "dev.cognitivity.chronal.PlayPause") {
-            if (playing) {
-                stop()
-            } else {
-                start()
-            }
-        }
-        if (intent?.action == "dev.cognitivity.chronal.Stop") {
-            if (playing) stop()
-            val notificationManager = context?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.cancel(1)
+        when (intent?.action) {
+            "dev.cognitivity.chronal.PlayPause" -> if (playing) stop() else start()
+            "dev.cognitivity.chronal.BpmUp" -> if (activePlan == null) { bpm += BPM_STEP; persistBpm() }
+            "dev.cognitivity.chronal.BpmDown" -> if (activePlan == null) { bpm -= BPM_STEP; persistBpm() }
         }
     }
 }
